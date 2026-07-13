@@ -1,0 +1,21 @@
+/.venv
+/scripts/__pycache__
+/__pycache__
+__pycache__/
+/outputs/
+/data/sentiment_*.tsv
+/aj_reviews_export.jsonl
+/aj_reviews_export.jsonl.zip
+/data/*.tsv
+/model/rubert-base-cased/model.safetensors
+/model/rubert-base-cased/pytorch_model.bin
+# Trained GPU model weights — large, keep out of Git (GitHub-safe)
+/model/rubert-sentiment-gpu1/
+/model/rubert-sentiment-gpu2/
+/model/rubert-sentiment-v2/
+/model/ruroberta-sentiment/
+/model/ruroberta-sentiment-5class/
+# Downloaded archives
+/rubert-sentiment-final.zip
+# Secrets
+/.env
