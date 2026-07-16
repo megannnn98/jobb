@@ -37,6 +37,15 @@ predate ruRoberta and describe RuBERT-only history — read them as that, not as
 | RuBERT V2 | 178M | *not committed* — see below | Kaggle P100 | 0.733 | 4000 |
 | **ruRoberta-large (main)** | 355M | `train_ruroberta.py` / `kaggle/ruroberta/train.py` | Kaggle P100 (training) | **0.771** | **full test (17,523)** |
 
+### MAX_LENGTH ablation (5-class ruRoberta-large, full test 17,523 rows)
+
+| MAX_LENGTH | Accuracy | Macro F1 | Δ vs 128 | Inference (T4) | Best neg coverage | Best pos coverage | Training time |
+|---|---|---|---|---|---|---|---|
+| 64 | 0.8716 | 0.7061 | −4.5pp / −4.8pp | 195s | 12,324 @ 0.993 (T=0.15) | 1,136 @ 0.921 (T=1.0) | ~1h |
+| 96 | 0.8964 | 0.7355 | −1.97pp / −1.83pp | 302s | 12,352 @ 0.994 (T=0.20) | 1,320 @ 0.904 (T=0.50) | ~1h05m |
+| **128 (main)** | **0.9161** | **0.7538** | — | ~380–450s | 12,179 @ 0.996 (T=0.25) | 1,330 @ 0.904 (T=0.25) | ~3h08m |
+| 192 | 0.9190 | 0.7631 | +0.29pp / +0.93pp | 570s | 12,652 @ 0.996 (T=0.20) | 1,380 @ 0.902 (T=0.25) | ~2h40m |
+
 - `rubert-train-p100.py` is a **standalone Kaggle script**, not a variant of `train_fast_bert.py`
   despite the similar two-phase structure — it hardcodes Kaggle input paths.
 - The **RuBERT V2 training script itself is not in this repo** — `docs/model-tuning.md` points to
@@ -250,6 +259,33 @@ len96 model's auto-positive precision maxes at 0.898 (just below 0.90 bar). Oper
 speed gain is also much smaller (~1.3x vs ~2x) — the cost/benefit ratio doesn't justify switching.
 Local outputs in `outputs/eval-5class-len96/`; Kaggle kernels retained:
 `megannnn98/ruroberta-train-5class-len96` and `megannnn98/ruroberta-eval-5class-len96`.
+
+## MAX_LENGTH=192 retrain experiment (2026-07-16) — measured, local artifacts retained
+
+Same methodology as the len96/len64 experiments: retrained from scratch with **training MAX_LENGTH=192**
+(vs main model's 128), identical `kaggle/ruroberta-5class/train.py` copy with only MAX_LENGTH and
+output paths changed. Kaggle kernel `megannnn98/ruroberta-train-5class-len192` (T4, ~2h40m).
+Eval: `megannnn98/ruroberta-eval-5class-len192` (full test set, 17,523 rows, MAX_LENGTH=192,
+temperature sweep [1.0..0.1]).
+
+**Result vs main 128-token model: accuracy 0.9190 vs 0.9161 (+0.29pp), macro F1 0.7631 vs
+0.7538 (+0.93pp).** First model to beat the baseline. Per-class: positive F1 0.892 (+1.2pp),
+negative F1 0.960 (+0.1pp), manual_review F1 0.407 (−4.7pp, still weakest), spam F1 0.878
+(+3.2pp), service_complaint F1 0.679 (+4.8pp). Inference 569.6s (30.8 ex/s) vs ~380–450s
+baseline (~1.3x slower).
+
+**Threshold-policy findings:** baseline's T=0.25 **works** on len192 (unlike len64/len96):
+- **Negative:** T=0.25, neg_thr=0.50 → 8,508 auto-negative (48.5%) @ precision 0.998. T=0.20
+  gives 12,652 (72.2%) @ 0.996. T=0.15 gives 13,306 (75.9%) @ 0.994.
+- **Positive:** T=0.25, pos_thr=0.70 → 1,380 auto-positive (7.9%) @ precision 0.902.
+- Combined auto-coverage at T=0.25: 56.4%; at T=0.20: 80.1%; at T=0.15: 83.8%.
+
+**Decision: pending** — len192 is the first model to improve over baseline on argmax metrics
+(+0.29pp accuracy, +0.93pp macro-F1), with notably better service_complaint (+4.8pp) and
+spam (+3.2pp) handling. Trade-off: ~1.3x slower inference (569.6s vs ~380–450s on T4) and
+~2.5x longer training (~2h40m vs ~1h05m for len96). Local outputs in
+`outputs/eval-5class-len192/`; Kaggle kernels retained:
+`megannnn98/ruroberta-train-5class-len192` and `megannnn98/ruroberta-eval-5class-len192`.
 
 ## ruRoberta-large pipeline (current main model)
 
