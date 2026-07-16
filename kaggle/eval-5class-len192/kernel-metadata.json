@@ -1,0 +1,16 @@
+{
+  "id": "megannnn98/ruroberta-eval-5class-len192",
+  "title": "ruroberta-eval-5class-len192",
+  "code_file": "eval.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "true",
+  "machine_shape": "",
+  "dataset_sources": ["megannnn98/rubert-job-reviews-sentiment-5class"],
+  "competition_sources": [],
+  "kernel_sources": ["megannnn98/ruroberta-train-5class-len192"],
+  "model_sources": []
+}

@@ -189,6 +189,68 @@ so the new `spam`/`service_complaint` values don't need any compatibility shim).
 model's local weights (`model/ruroberta-sentiment/`) were deleted on 2026-07-13, same day as
 promotion — see the note in "What this repo is" above for how to get it back if ever needed.
 
+## MAX_LENGTH=64 retrain experiment (2026-07-16) — measured, local artifacts deleted
+
+Retrained the 5-class ruRoberta-large from scratch with **training MAX_LENGTH=64** (vs the main
+model's 128) to measure the quality/speed trade-off of a shorter window. Setup was an exact copy
+of `kaggle/ruroberta-5class/train.py` with only `MAX_LENGTH=64` + output paths changed; same
+dataset (`megannnn98/rubert-job-reviews-sentiment-5class`), same two-phase schedule; trained and
+evaluated on Kaggle T4 (training ~1h, about half the 128-token run). Eval = full test set
+(17,523 rows) at `max_length=64`, argmax + temperature-swept threshold grid
+(TEMPERATURES 1.0/0.5/0.33/0.25/0.2/0.15/0.1).
+
+**Result vs main 128-token model:** accuracy 0.8716 vs 0.9161 (−4.5pp), macro F1 0.7061 vs 0.7538
+(−4.8pp); inference ~2x faster (195s vs ~380–450s full test on T4). Degradation mechanism: 1,124
+gold-`negative` rows leak into `manual_review` (negative recall 0.927→0.877), collapsing
+`manual_review` precision 0.318→0.173. `spam` is unaffected (f1 +0.5pp — spam is short);
+`service_complaint` −1.2pp, `positive` −3.4pp.
+
+**Threshold-policy findings (why a per-model temperature sweep is mandatory):** the main model's
+`TEMPERATURE=0.25` is **not portable** — at T=0.25 the len64 model's auto-negative coverage is only
+2,756 rows (16%). Its own operating point is **T=0.15/neg_thr=0.50 → 12,324 auto-negative @
+precision 0.993** (70% coverage, comparable to main's 12,179 @ 0.996; T=0.1 → 12,708 @ 0.992,
+essentially the argmax ceiling of 12,814 @ 0.9915). Auto-positive clears the 0.90 bar **only at
+raw softmax (T=1.0): pos_thr=0.80 → 1,136 @ 0.921** — at any T<1 the positive operating point is
+compressed above pos_thr=0.90 where the grid doesn't look (grid-granularity artifact, not a model
+property). Net: len64 would need **per-class temperatures** (neg ≈0.15, pos 1.0).
+
+**Decision: main model unchanged** — len64 is a ~4.5pp accuracy / ~4.8pp macro-F1 sacrifice for
+~2x inference speed; auto-decision coverage is recoverable but argmax quality is not. Local
+artifacts (`kaggle/ruroberta-5class-len64/`, `kaggle/eval-5class-len64/`,
+`outputs/eval-5class-len64/`) were deleted after recording these results (len64 model weights were
+never downloaded locally). The Kaggle-side kernels remain:
+`megannnn98/ruroberta-train-5class-len64` (weights in its Output) and
+`megannnn98/ruroberta-eval-5class-len64` (v1 = argmax report at T=0.25 grid, v2 = full
+temperature-sweep grid).
+
+## MAX_LENGTH=96 retrain experiment (2026-07-16) — measured, local artifacts retained
+
+Same methodology as the len64 experiment: retrained from scratch with **training MAX_LENGTH=96**
+(vs main model's 128), identical `kaggle/ruroberta-5class/train.py` copy with only MAX_LENGTH and
+output paths changed. Kaggle kernel `megannnn98/ruroberta-train-5class-len96` (T4, ~1h05m).
+Eval: `megannnn98/ruroberta-eval-5class-len96` (full test set, 17,523 rows, MAX_LENGTH=96,
+temperature sweep [1.0..0.1]).
+
+**Result vs main 128-token model:** accuracy 0.8964 vs 0.9161 (−1.97pp), macro F1 0.7355 vs
+0.7538 (−1.83pp); inference 302.4s vs ~380–450s (~1.3x faster, not ~2x like len64). Degradation
+is moderate: `negative` F1 −1.3pp (0.959→0.946), `manual_review` F1 −11.9pp (0.454→0.335,
+same mechanism as len64 — gold-negative rows leak into manual_review); `spam` **improved** +2.6pp
+(0.846→0.872), `service_complaint` +1.3pp (0.631→0.644).
+
+**Threshold-policy findings:** main model's T=0.25 is again **not portable** — at T=0.25 the
+len96 model's auto-positive precision maxes at 0.898 (just below 0.90 bar). Operating points:
+- **Negative:** T=0.20, neg_thr=0.50 → 12,352 auto-negative @ precision 0.994 (70.5% coverage,
+  comparable to main's 12,179 @ 0.996). T=0.15 gives 12,946 @ 0.993 (73.9%).
+- **Positive:** T=0.50, pos_thr=0.80 → 1,320 auto-positive @ 0.904 (7.5%). Or T=0.33,
+  pos_thr=0.90 → 1,325 @ 0.902. Or raw T=1.0, pos_thr=0.50 → 1,334 @ 0.901.
+- Combined auto-coverage ≈78% — similar to main's ~77%.
+
+**Decision: main model unchanged** — len96 is a ~2pp accuracy / ~1.8pp macro-F1 sacrifice for
+~1.3x inference speed. The quality degradation is much smaller than len64's (~4.5pp), but the
+speed gain is also much smaller (~1.3x vs ~2x) — the cost/benefit ratio doesn't justify switching.
+Local outputs in `outputs/eval-5class-len96/`; Kaggle kernels retained:
+`megannnn98/ruroberta-train-5class-len96` and `megannnn98/ruroberta-eval-5class-len96`.
+
 ## ruRoberta-large pipeline (current main model)
 
 `train_ruroberta.py` (repo root) and `kaggle/ruroberta/train.py` are **identical, untracked**

@@ -15,6 +15,9 @@ __pycache__/
 /model/rubert-sentiment-v2/
 /model/ruroberta-sentiment/
 /model/ruroberta-sentiment-5class/
+/model/ruroberta-sentiment-5class-len64/
+/model/ruroberta-sentiment-5class-len96/
+/model/ruroberta-sentiment-5class-len192/
 # Downloaded archives
 /rubert-sentiment-final.zip
 # Secrets
