@@ -16,25 +16,26 @@ scripts/split_jsonl_sentiment_dataset.py      (см. docs/data.md)
 train_ruroberta.py / kaggle/ruroberta/train.py (Kaggle P100, см. docs/training.md, CLAUDE.md)
         |
         v
-model/ruroberta-sentiment/    ← основная модель (ruRoberta-large, 355M)
+model/ruroberta-sentiment-5class/    ← основная модель (ruRoberta-large, 5 классов)
         |
         +-- predict.py                          (CLI, см. docs/inference.md)
         +-- scripts/predict_sentiment.py        (policy, см. docs/inference.md)
+        +-- api.py + Dockerfile                 (HTTP API, см. docs/inference.md)
         +-- scripts/validate_sentiment_on_tsv.py (см. docs/evaluation.md)
         +-- scripts/validate_sentiment_on_jsonl.py
 ```
 
-Актуальный основной артефакт — `model/ruroberta-sentiment/` (ruRoberta-large, обучена на Kaggle
-P100, macro F1 0.7811 на полном held-out test при MAX_LENGTH=512 — см.
-[docs/evaluation.md](evaluation.md)). Три более ранних RuBERT-чекпоинта (`gpu1`/`gpu2`/`v2`)
-превосходились по метрикам на каждом шаге и были удалены локально 2026-07-12 (воспроизводимы из
-committed training-скриптов при необходимости — см. `CLAUDE.md`, таблица lineage). Детали —
-[docs/training.md](training.md) и [docs/gpu_training.md](gpu_training.md).
+Актуальный основной артефакт — `model/ruroberta-sentiment-5class/` (ruRoberta-large,
+`positive`/`negative`/`manual_review`/`spam`/`service_complaint`). 5-классовая модель обучена на
+Kaggle и использует независимую LLM-разметку (DeepSeek) подмножества прежнего `manual_review` для
+выделения `spam` и `service_complaint`; детали lineage и threshold policy см. в `CLAUDE.md` и
+[docs/inference.md](inference.md). Предыдущая 3-классовая ruRoberta осталась историческим
+baseline и локально больше не является main.
 
-Параллельно существует **экспериментальная 5-классовая ветка** (`positive`/`negative`/
-`manual_review`/`spam`/`service_complaint`, `model/ruroberta-sentiment-5class/`,
-`kaggle/ruroberta-5class/`) с независимой LLM-разметкой (DeepSeek) подмножества `manual_review` —
-не промотирована в main, см. `CLAUDE.md`, раздел «5-class variant».
+Для интеграции с внешним сервисом добавлен контейнерный слой: `api.py` поднимает FastAPI,
+загружает модель на startup и публикует `GET /health` и `POST /predict`. `Dockerfile` собирает
+CPU image с PyTorch/Transformers и по умолчанию копирует `model/ruroberta-sentiment-5class/`
+внутрь image; при запуске можно переопределить `MODEL_DIR` и примонтировать веса отдельно.
 
 ## Ключевые проектные решения
 
@@ -47,12 +48,11 @@ committed training-скриптов при необходимости — см. 
 
 ### Пороговая политика вместо argmax
 
-По held-out (см. [docs/evaluation.md](evaluation.md), ruRoberta-large) `negative` уверенно
-отделяется (precision ~0.928 при `negative_threshold=0.50`), а `positive` — нет (precision
-максимум ~0.847, ниже целевых 0.90). Отсюда асимметрия в policy: auto-negative включается раньше,
-auto-positive требует высокого порога или выключен. В экспериментальной 5-классовой модели та же
-идея реализована через temperature scaling поверх softmax (см. `CLAUDE.md`) — там без этой правки
-`negative_prob` вообще не годился для порога из-за экстремальных class weights.
+В основной 5-классовой модели routing policy использует temperature scaling поверх softmax
+(`temperature=0.25`) и дефолтные пороги `negative_threshold=0.50`,
+`positive_threshold=0.70`. Без scaling `negative_prob` не годился для порога из-за экстремальных
+class weights. `spam`, `service_complaint`, `manual_review` и всё, что не прошло пороги,
+уходит в `manual_review`.
 
 ### Кодировка текста
 

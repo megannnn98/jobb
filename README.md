@@ -130,6 +130,69 @@ python scripts/predict_sentiment.py \
 
 Подробнее — [docs/inference.md](docs/inference.md).
 
+## Docker API
+
+Контейнер поднимает FastAPI-сервис поверх production policy из `scripts/predict_sentiment.py`.
+По умолчанию модель встраивается в image из локальной папки `model/ruroberta-sentiment-5class/`,
+поэтому перед сборкой она должна уже лежать в репозитории.
+
+```bash
+docker build -t jobb-sentiment-api .
+docker run --rm -p 8000:8000 jobb-sentiment-api
+```
+
+Сервис грузит модель на startup. Если папка модели не найдена, контейнер завершится с ошибкой.
+Локально собранный image получается большим, потому что содержит веса ruRoberta-large.
+
+### Endpoints
+
+- `GET /health` — проверка, что API поднялся и какая папка модели используется.
+- `POST /predict` — классификация одного текста через `balanced` policy.
+
+Проверка после запуска:
+
+```bash
+curl -sS http://127.0.0.1:8000/health
+curl -sS -X POST http://127.0.0.1:8000/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Зарплату задерживают уже три месяца."}'
+```
+
+Пример ответа `/predict`:
+
+```json
+{
+  "decision": "negative",
+  "decision_policy": "balanced",
+  "raw_top_label": "negative",
+  "raw_confidence": 0.5378,
+  "positive_prob": 0.0014,
+  "negative_prob": 0.5378,
+  "manual_review_prob": 0.3604,
+  "spam_prob": 0.0139,
+  "service_complaint_prob": 0.0865
+}
+```
+
+Для интеграции вместо GPT отправляй текст отзыва в `/predict`; использовать нужно поле
+`decision`. `raw_top_label` и вероятности — диагностические поля для логов/разбора спорных
+случаев. `manual_review` означает, что автоматическое решение не принято.
+
+### Модель снаружи контейнера
+
+Dockerfile по умолчанию копирует модель внутрь image. Если на сервере удобнее хранить веса
+отдельно, можно переопределить `MODEL_DIR` и примонтировать каталог:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -e MODEL_DIR=/models/ruroberta-sentiment-5class \
+  -v /srv/jobb/model/ruroberta-sentiment-5class:/models/ruroberta-sentiment-5class:ro \
+  jobb-sentiment-api
+```
+
+Каталог должен содержать минимум `config.json`, `model.safetensors`, `tokenizer.json` и
+`tokenizer_config.json`.
+
 ## Качество модели
 
 **5-классовая модель (текущая основная), held-out test, весь test-сплит (17523), MAX_LENGTH=128:**
@@ -170,6 +233,8 @@ ruRoberta-large обходила лучший RuBERT (V2) по всем метр
 model/ruroberta-sentiment-5class/  # основная модель (скачать с Kaggle)
 predict.py                         # CLI: классификация одного отзыва
 scripts/predict_sentiment.py       # policy-инференс с порогами
+api.py                             # FastAPI: /health и /predict
+Dockerfile                         # контейнер для API
 main.py                            # demo
 docs/                              # документация
 ```
